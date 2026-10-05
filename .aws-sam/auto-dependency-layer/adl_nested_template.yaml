@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS SAM CLI Nested Stack for Auto Dependency Layer Creation
+Metadata:
+  SamCliInfo: 1.166.2
+  key: AWS SAM CLI sync command
+Outputs:
+  OutboxPublisherFunction4b7b99b0DepLayer:
+    Value:
+      Ref: OutboxPublisherFunction4b7b99b0DepLayer
+  WatchlistApiFunction1a819166DepLayer:
+    Value:
+      Ref: WatchlistApiFunction1a819166DepLayer
+Resources:
+  OutboxPublisherFunction4b7b99b0DepLayer:
+    Metadata:
+      CreatedBy: AWS SAM CLI sync command
+    Properties:
+      CompatibleRuntimes:
+      - python3.12
+      ContentUri: C:\Users\9941006927\threatfocus-watchlist-api\.aws-sam\auto-dependency-layer\OutboxPublisherFunction4b7b99b0DepLayer
+      Description: Auto created layer for dependencies of function OutboxPublisherFunction
+      LayerName: watchlist-servic9679e688-OutboxPublisherFunctio4b7b99b0-DepLayer
+      RetentionPolicy: Delete
+    Type: AWS::Serverless::LayerVersion
+  WatchlistApiFunction1a819166DepLayer:
+    Metadata:
+      CreatedBy: AWS SAM CLI sync command
+    Properties:
+      CompatibleRuntimes:
+      - python3.12
+      ContentUri: C:\Users\9941006927\threatfocus-watchlist-api\.aws-sam\auto-dependency-layer\WatchlistApiFunction1a819166DepLayer
+      Description: Auto created layer for dependencies of function WatchlistApiFunction
+      LayerName: watchlist-servic9679e688-WatchlistApiFunction1a819166-DepLayer
+      RetentionPolicy: Delete
+    Type: AWS::Serverless::LayerVersion
+Transform: AWS::Serverless-2016-10-31

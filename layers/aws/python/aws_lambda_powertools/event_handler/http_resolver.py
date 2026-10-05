@@ -1,0 +1,400 @@
+from __future__ import annotations
+
+import base64
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Callable
+from urllib.parse import parse_qs
+
+from aws_lambda_powertools.event_handler.api_gateway import (
+    ApiGatewayResolver,
+    BaseRouter,
+    ProxyEventType,
+)
+from aws_lambda_powertools.shared.headers_serializer import BaseHeadersSerializer
+from aws_lambda_powertools.utilities.data_classes.common import BaseProxyEvent
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, MutableMapping
+
+    from aws_lambda_powertools.shared.cookies import Cookie
+
+
+class HttpHeadersSerializer(BaseHeadersSerializer):
+    """Headers serializer for native HTTP responses."""
+
+    def serialize(self, headers: dict[str, str | list[str]], cookies: list[Cookie]) -> dict[str, Any]:
+        """Serialize headers for HTTP response format."""
+        combined_headers: dict[str, str] = {}
+        for key, values in headers.items():
+            if values is None:  # pragma: no cover
+                continue
+            if isinstance(values, str):
+                combined_headers[key] = values
+            else:
+                combined_headers[key] = ", ".join(values)
+
+        # Add cookies as Set-Cookie headers
+        cookie_headers = [str(cookie) for cookie in cookies] if cookies else []
+
+        return {"headers": combined_headers, "cookies": cookie_headers}
+
+
+class HttpProxyEvent(BaseProxyEvent):
+    """
+    A proxy event that wraps native HTTP request data.
+
+    This allows the same route handlers to work with both Lambda and native HTTP servers.
+    """
+
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        headers: dict[str, str] | None = None,
+        body: str | bytes | None = None,
+        query_string: str | None = None,
+        path_parameters: dict[str, str] | None = None,
+        request_context: dict[str, Any] | None = None,
+    ):
+        # Parse query string
+        query_params: dict[str, str] = {}
+        multi_query_params: dict[str, list[str]] = {}
+
+        if query_string:
+            parsed = parse_qs(query_string, keep_blank_values=True)
+            multi_query_params = parsed
+            query_params = {k: v[-1] for k, v in parsed.items()}
+
+        # Normalize body to string
+        body_str = None
+        if body is not None:
+            body_str = body.decode("utf-8") if isinstance(body, bytes) else body
+
+        # Build the internal dict structure that BaseProxyEvent expects
+        data = {
+            "httpMethod": method.upper(),
+            "path": path,
+            "headers": headers or {},
+            "body": body_str,
+            "isBase64Encoded": False,
+            "queryStringParameters": query_params,
+            "multiValueQueryStringParameters": multi_query_params,
+            "pathParameters": path_parameters or {},
+            "requestContext": request_context
+            or {
+                "stage": "local",
+                "requestId": "local-request-id",
+                "http": {"method": method.upper(), "path": path},
+            },
+        }
+
+        super().__init__(data)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, Any]) -> HttpProxyEvent:
+        """Create HttpProxyEvent directly from a dict (used internally)."""
+        instance = object.__new__(cls)
+        BaseProxyEvent.__init__(instance, data)
+        return instance
+
+    @classmethod
+    def from_asgi(cls, scope: Mapping[str, Any], body: bytes | None = None) -> HttpProxyEvent:
+        """
+        Create an HttpProxyEvent from an ASGI scope dict.
+
+        Parameters
+        ----------
+        scope : dict
+            ASGI scope dictionary
+        body : bytes, optional
+            Request body
+
+        Returns
+        -------
+        HttpProxyEvent
+            Event object compatible with Powertools resolvers
+        """
+        # Extract headers from ASGI format [(b"key", b"value"), ...]
+        headers: dict[str, str] = {}
+        for key, value in scope.get("headers", []):
+            header_name = key.decode("utf-8").lower()
+            header_value = value.decode("utf-8")
+            # Handle duplicate headers by joining with comma
+            if header_name in headers:
+                headers[header_name] = f"{headers[header_name]}, {header_value}"
+            else:
+                headers[header_name] = header_value
+
+        return cls(
+            method=scope["method"],
+            path=scope["path"],
+            headers=headers,
+            body=body,
+            query_string=scope.get("query_string", b"").decode("utf-8"),
+        )
+
+    def header_serializer(self) -> BaseHeadersSerializer:
+        """Return the HTTP headers serializer."""
+        return HttpHeadersSerializer()
+
+    @property
+    def resolved_query_string_parameters(self) -> dict[str, list[str]]:
+        """Return query parameters in the format expected by OpenAPI validation."""
+        return self.multi_value_query_string_parameters
+
+    @property
+    def resolved_headers_field(self) -> dict[str, str]:
+        """Return headers in the format expected by OpenAPI validation."""
+        return self.headers
+
+
+class MockLambdaContext:
+    """Minimal Lambda context for HTTP adapter."""
+
+    function_name = "http-resolver"
+    memory_limit_in_mb = 128
+    invoked_function_arn = "arn:aws:lambda:local:000000000000:function:http-resolver"
+    aws_request_id = "local-request-id"
+    log_group_name = "/aws/lambda/http-resolver"
+    log_stream_name = "local"
+
+    def get_remaining_time_in_millis(self) -> int:  # pragma: no cover
+        return 300000  # 5 minutes
+
+
+@dataclass
+class _RequestState:
+    event: BaseProxyEvent | None = None
+    lambda_context: Any = None
+    context: dict = field(default_factory=dict)
+    processed_stack_frames: list[str] = field(default_factory=list)
+
+
+class HttpResolverLocal(ApiGatewayResolver):
+    """
+    ASGI-compatible HTTP resolver.
+
+    It allows you to run your Powertools application with any ASGI server
+    (uvicorn, hypercorn, daphne, etc.) while maintaining full compatibility with Lambda.
+
+    The same code works in both environments - locally via ASGI and in Lambda via the handler.
+    If your Lambda is behind Lambda Web Adapter or any other HTTP proxy, it works seamlessly.
+
+    Supports both sync and async route handlers.
+
+    Example
+    -------
+    ```python
+    from aws_lambda_powertools.event_handler import HttpResolverLocal
+
+    app = HttpResolverLocal()
+
+    @app.get("/hello/<name>")
+    async def hello(name: str):
+        # Async handler - can use await
+        return {"message": f"Hello, {name}!"}
+
+    @app.get("/sync")
+    def sync_handler():
+        # Sync handlers also work
+        return {"sync": True}
+
+    # Run locally with uvicorn:
+    # uvicorn app:app --reload
+
+    # Deploy to Lambda (sync only):
+    # handler = app
+    ```
+    """
+
+    def __init__(
+        self,
+        cors: Any = None,
+        debug: bool | None = None,
+        serializer: Callable[[dict], str] | None = None,
+        strip_prefixes: list[str | Any] | None = None,
+        enable_validation: bool = False,
+    ):
+        self._startup_state = _RequestState()
+        self._request_state: ContextVar[_RequestState | None] = ContextVar("local_http_request", default=None)
+        super().__init__(
+            proxy_type=ProxyEventType.APIGatewayProxyEvent,  # Use REST API format internally
+            cors=cors,
+            debug=debug,
+            serializer=serializer,
+            strip_prefixes=strip_prefixes,
+            enable_validation=enable_validation,
+        )
+
+    @property
+    def _state(self) -> _RequestState:
+        return self._request_state.get() or self._startup_state
+
+    # Powertools declares these as mutable attributes. Properties preserve that
+    # interface while directing each task to its own state. asyncio.to_thread
+    # propagates the ContextVar, so middleware sees the same request dictionary.
+    @property
+    def current_event(self) -> BaseProxyEvent:
+        # Preserve the inherited synchronous resolve() path outside ASGI calls.
+        return self._state.event or BaseRouter.current_event
+
+    @current_event.setter
+    def current_event(self, value: BaseProxyEvent) -> None:
+        self._state.event = value
+
+    @property
+    def lambda_context(self) -> Any:
+        return self._state.lambda_context or BaseRouter.lambda_context
+
+    @lambda_context.setter
+    def lambda_context(self, value: Any) -> None:
+        self._state.lambda_context = value
+
+    @property
+    def context(self) -> dict:
+        return self._state.context
+
+    @context.setter
+    def context(self, value: dict) -> None:
+        self._state.context = value
+
+    @property
+    def processed_stack_frames(self) -> list[str]:
+        return self._state.processed_stack_frames
+
+    @processed_stack_frames.setter
+    def processed_stack_frames(self, value: list[str]) -> None:
+        self._state.processed_stack_frames = value
+
+    def _to_proxy_event(self, event: dict) -> BaseProxyEvent:
+        """Convert event dict to HttpProxyEvent."""
+        # Create HttpProxyEvent directly from the dict data
+        # The dict already has queryStringParameters and multiValueQueryStringParameters
+        return HttpProxyEvent._from_dict(event)
+
+    def _get_base_path(self) -> str:
+        """Return the base path for HTTP resolver (no stage prefix)."""
+        return ""
+
+    async def _resolve_async(self) -> dict:  # type: ignore[override]
+        """Thin async resolver: delegates entirely to the parent and serializes to dict.
+
+        The parent's _resolve_async handles route matching, CORS preflight, not-found
+        logic, and exception handling. The only adaptation needed here is converting
+        the returned ResponseBuilder into the dict format that asgi_handler expects.
+        """
+        response_builder = await super()._resolve_async()
+        return response_builder.build(self.current_event, self._cors)
+
+    async def asgi_handler(self, scope: MutableMapping[str, Any], receive: Callable, send: Callable) -> None:
+        """
+        ASGI interface - allows running with uvicorn/hypercorn/etc.
+
+        Parameters
+        ----------
+        scope : dict
+            ASGI connection scope
+        receive : Callable
+            ASGI receive function
+        send : Callable
+            ASGI send function
+        """
+        if scope["type"] == "lifespan":
+            # Handle lifespan events (startup/shutdown)
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+
+        if scope["type"] != "http":
+            return
+
+        # Read request body
+        body = b""
+        while True:
+            message = await receive()
+            body += message.get("body", b"")
+            if not message.get("more_body", False):
+                break
+
+        # Convert ASGI scope to HttpProxyEvent
+        event = HttpProxyEvent.from_asgi(scope, body)
+
+        # Create mock Lambda context
+        context: Any = MockLambdaContext()
+
+        # Never write BaseRouter's class attributes: another ASGI request may
+        # enter while validation or the handler is awaiting I/O.
+        state = _RequestState(
+            event=self._to_proxy_event(event._data),
+            lambda_context=context,
+            context=self._startup_state.context.copy(),
+        )
+        token = self._request_state.set(state)
+        try:
+            response = await self._resolve_async()
+        finally:
+            # Reset only this task's binding. Middleware threads may still be
+            # unwinding after cancellation and retain their request's state.
+            self._request_state.reset(token)
+
+        # Send HTTP response
+        await self._send_response(send, response)
+
+    async def __call__(  # type: ignore[override]
+        self,
+        scope: MutableMapping[str, Any],
+        receive: Callable,
+        send: Callable,
+    ) -> None:
+        """ASGI interface - allows running with uvicorn/hypercorn/etc."""
+        await self.asgi_handler(scope, receive, send)
+
+    async def _send_response(self, send: Callable, response: dict) -> None:
+        """Send the response via ASGI."""
+        status_code = response.get("statusCode", 200)
+        headers = response.get("headers", {})
+        cookies = response.get("cookies", [])
+        body = response.get("body", "")
+        is_base64 = response.get("isBase64Encoded", False)
+
+        # Build headers list for ASGI
+        header_list: list[tuple[bytes, bytes]] = []
+        for key, value in headers.items():
+            header_list.append((key.lower().encode(), str(value).encode()))
+
+        # Add Set-Cookie headers
+        for cookie in cookies:
+            header_list.append((b"set-cookie", str(cookie).encode()))
+
+        # Send response start
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status_code,
+                "headers": header_list,
+            },
+        )
+
+        # Prepare body
+        if is_base64:
+            body_bytes = base64.b64decode(body)
+        elif isinstance(body, str):
+            body_bytes = body.encode("utf-8")
+        else:  # pragma: no cover
+            body_bytes = body
+
+        # Send response body
+        await send(
+            {
+                "type": "http.response.body",
+                "body": body_bytes,
+            },
+        )
+
+
+HttpResolver = HttpResolverLocal

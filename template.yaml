@@ -1,0 +1,160 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for ThreatFocus Watchlist Service
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    Timeout: 29
+    MemorySize: 512
+    CodeUri: ./app
+    Layers:
+      - !Ref LayerServer
+      - !Ref LayerApp
+      - !Ref LayerAws
+      - !Ref LayerSec
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref WatchlistSingleTable
+        EVENT_BUS_NAME: !Ref ThreatFocusEventBus
+
+Resources:
+  LayerServer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: watchlist-server
+      ContentUri: layers/server/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+
+  LayerApp:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: watchlist-app
+      ContentUri: layers/app/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+
+  LayerAws:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: watchlist-aws
+      ContentUri: layers/aws/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+
+  LayerSec:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: watchlist-sec
+      ContentUri: layers/sec/
+      CompatibleRuntimes: [python3.12]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+
+  WatchlistSingleTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: ThreatFocusWatchlists
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  ThreatFocusEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: ThreatFocusEventBus
+
+  WatchlistHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: ThreatFocus Watchlist Service API
+      Description: HTTP API Gateway routing to FastAPI Watchlist Lambda
+
+  WatchlistApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: threatfocus-watchlist-api
+      Handler: main.handler
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: watchlist-service
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WatchlistSingleTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:BatchGetItem
+                - dynamodb:BatchWriteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:TransactWriteItems
+                - dynamodb:TransactGetItems
+              Resource: arn:aws:dynamodb:*:*:table/*
+      Events:
+        ProxyRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref WatchlistHttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  OutboxPublisherFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: threatfocus-outbox-publisher
+      Handler: src.worker.outbox_publisher.lambda_handler
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: outbox-publisher
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref WatchlistSingleTable
+        - EventBridgePutEventsPolicy:
+            EventBusName: !Ref ThreatFocusEventBus
+      Events:
+        OutboxCron:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API Gateway endpoint URL
+    Value: !Sub https://${WatchlistHttpApi}.execute-api.${AWS::Region}.amazonaws.com

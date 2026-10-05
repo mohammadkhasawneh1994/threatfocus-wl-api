@@ -1,0 +1,4 @@
+fastapi>=0.110.0,<0.111.0
+mangum>=0.17.0,<0.18.0
+pydantic>=2.6.0,<3.0.0
+pydantic-settings>=2.2.0,<3.0.0
