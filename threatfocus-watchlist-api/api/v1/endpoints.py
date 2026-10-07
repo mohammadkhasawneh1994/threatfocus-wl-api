@@ -1,14 +1,9 @@
-import os
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 
 from api.dependencies import get_repository
 from core.security import TenantContext, get_tenant_context, get_tenant_context_from_param
 from db.repository import WatchlistRepository
-from platform_auth_client.fastapi.dependencies import require_remote_access
-from platform_auth_client import RemoteAuthorizationClient
-from platform_auth_client.client import SigV4HttpTransport
-from platform_auth_client.config import RemoteClientConfig
 from domain.models import (
     IndicatorCreate,
     IndicatorResponse,
@@ -24,13 +19,6 @@ from domain.normalizers import IndicatorNormalizer
 
 router = APIRouter(prefix="/v1")
 
-platform_auth = RemoteAuthorizationClient(
-    SigV4HttpTransport(
-        RemoteClientConfig.from_env(),
-        region=os.environ["REGION_NAME"],
-    )
-)
-
 
 # WATCHLIST MANAGEMENT
 @router.post(
@@ -44,11 +32,7 @@ platform_auth = RemoteAuthorizationClient(
 )
 async def create_watchlist(
     payload: WatchlistCreate,
-    auth = Depends(require_remote_access(client=platform_auth,
-                                         action="credential-leak:statistics:read",
-                                         resource_type="statistics"
-                                         #resource_id_path_parameter="statistics"
-                                        )),
+    ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
 ):
     return repo.create_watchlist(tenant_id=ctx.tenant_id, data=payload)
