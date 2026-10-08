@@ -10,52 +10,16 @@ Globals:
     MemorySize: 512
     CodeUri: ./app
     Layers:
-      - !Ref LayerServer
-      - !Ref LayerApp
-      - !Ref LayerAws
-      - !Ref LayerSec
+      - arn:aws:lambda:us-east-1:176498577113:layer:server:2
+      - arn:aws:lambda:us-east-1:176498577113:layer:app:2
+      - arn:aws:lambda:us-east-1:176498577113:layer:sec:2
+      - arn:aws:lambda:us-east-1:176498577113:layer:custom:1
     Environment:
       Variables:
         TABLE_NAME: !Ref WatchlistSingleTable
         EVENT_BUS_NAME: !Ref ThreatFocusEventBus
 
 Resources:
-  LayerServer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: watchlist-server
-      ContentUri: layers/server/
-      CompatibleRuntimes: [python3.12]
-      CompatibleArchitectures: [arm64]
-      RetentionPolicy: Delete
-
-  LayerApp:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: watchlist-app
-      ContentUri: layers/app/
-      CompatibleRuntimes: [python3.12]
-      CompatibleArchitectures: [arm64]
-      RetentionPolicy: Delete
-
-  LayerAws:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: watchlist-aws
-      ContentUri: layers/aws/
-      CompatibleRuntimes: [python3.12]
-      CompatibleArchitectures: [arm64]
-      RetentionPolicy: Delete
-
-  LayerSec:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: watchlist-sec
-      ContentUri: layers/sec/
-      CompatibleRuntimes: [python3.12]
-      CompatibleArchitectures: [arm64]
-      RetentionPolicy: Delete
-
   WatchlistSingleTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain

@@ -1,5 +1,5 @@
 from typing import Any, Dict, Optional
-from layers.app.python.fastapi import HTTPException, status
+from fastapi import HTTPException, status
 
 
 class ServiceException(Exception):

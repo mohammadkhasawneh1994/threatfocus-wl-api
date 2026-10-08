@@ -1,8 +1,8 @@
 import ipaddress
 import re
 from urllib.parse import urlparse
-from app.core.exceptions import InvalidIndicatorException
-from app.domain.models import IndicatorType, MatchType
+from core.exceptions import InvalidIndicatorException
+from domain.models import IndicatorType, MatchType
 
 # Matrix Configuration mapping allowed match types
 ALLOWED_MATCH_TYPES = {

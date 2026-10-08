@@ -2,12 +2,12 @@ import base64
 import json
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
-from  layers.aws.python import boto3
-from layers.aws.python.botocore.exceptions import ClientError
+import boto3
+from botocore.exceptions import ClientError
 
-from app.core.config import settings
-from app.core.exceptions import DuplicateResourceException, EntityNotFoundException, ServiceException
-from app.domain.models import (
+from core.config import settings
+from core.exceptions import DuplicateResourceException, EntityNotFoundException, ServiceException
+from domain.models import (
     EventEnvelope,
     IndicatorCreate,
     IndicatorResponse,

@@ -1,7 +1,7 @@
 
-from layers.app.python.fastapi import Depends
-from app.core.security import TenantContext, get_tenant_context
-from app.db.repository import WatchlistRepository
+from fastapi import Depends
+from core.security import TenantContext, get_tenant_context
+from db.repository import WatchlistRepository
 
 
 def get_repository() -> WatchlistRepository:

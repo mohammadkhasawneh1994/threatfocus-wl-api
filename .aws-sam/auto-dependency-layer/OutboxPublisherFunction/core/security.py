@@ -1,10 +1,10 @@
 from typing import Any, Dict
-from layers.app.python.fastapi import Depends, HTTPException, Request, status, Query
-from layers.app.python.fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from layers.sec.python import jwt
+from fastapi import Depends, HTTPException, Request, status, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import jwt
 
-from app.core.config import settings
-from app.core.exceptions import UnauthorizedAccessException
+from core.config import settings
+from core.exceptions import UnauthorizedAccessException
 
 security_scheme = HTTPBearer()
 

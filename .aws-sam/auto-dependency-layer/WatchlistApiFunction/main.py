@@ -1,10 +1,10 @@
-from layers.app.python.fastapi import FastAPI, Request
-from layers.app.python.fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from mangum import Mangum
 
-from app.api.v1.endpoints import router as v1_router
-from app.core.exceptions import ServiceException
-from app.core.logging import logger, setup_logging
+from api.v1.endpoints import router as v1_router
+from core.exceptions import ServiceException
+from core.logging import logger, setup_logging
 
 setup_logging()
 
