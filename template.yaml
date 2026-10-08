@@ -10,14 +10,19 @@ Globals:
     MemorySize: 512
     CodeUri: ./app
     Layers:
-      - arn:aws:lambda:us-east-1:176498577113:layer:server:2
-      - arn:aws:lambda:us-east-1:176498577113:layer:app:2
-      - arn:aws:lambda:us-east-1:176498577113:layer:sec:2
+      - arn:aws:lambda:us-east-1:176498577113:layer:server:3
+      - arn:aws:lambda:us-east-1:176498577113:layer:app:3
+      - arn:aws:lambda:us-east-1:176498577113:layer:aws:3
+      - arn:aws:lambda:us-east-1:176498577113:layer:sec:3
       - arn:aws:lambda:us-east-1:176498577113:layer:custom:1
     Environment:
       Variables:
         TABLE_NAME: !Ref WatchlistSingleTable
         EVENT_BUS_NAME: !Ref ThreatFocusEventBus
+        PLATFORM_ENV: dev
+        PLATFORM_AUTH_TIMEOUT_SECONDS: "5"
+        REGION_NAME: us-east-1
+        PLATFORM_AUTH_ENDPOINT: https://57ad1tb8n0.execute-api.us-east-1.amazonaws.com/v1
 
 Resources:
   WatchlistSingleTable:
@@ -101,7 +106,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: threatfocus-outbox-publisher
-      Handler: src.worker.outbox_publisher.lambda_handler
+      Handler: worker.outbox_publisher.lambda_handler
       Timeout: 60
       MemorySize: 256
       Environment:

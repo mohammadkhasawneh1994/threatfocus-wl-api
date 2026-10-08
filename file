@@ -1,0 +1,2 @@
+sam deploy --stack-name watchlist-service-stack --resolve-s3 --capabilities CAPABILITY_IAM --region us-east-1
+sam build
