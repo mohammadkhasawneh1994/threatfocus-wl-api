@@ -33,8 +33,7 @@ platform_auth = RemoteAuthorizationClient(
 
 
 # WATCHLIST MANAGEMENT
-@router.post(
-    "/watchlists",
+@router.post("/watchlists",
     response_model=WatchlistResponse,
     status_code=status.HTTP_201_CREATED,
     tags=["Watchlists"],
@@ -44,12 +43,12 @@ platform_auth = RemoteAuthorizationClient(
 )
 async def create_watchlist(
     payload: WatchlistCreate,
-    auth = Depends(require_remote_access(client=platform_auth,
-                                         action="credential-leak:statistics:read",
-                                         resource_type="statistics"
-                                         #resource_id_path_parameter="statistics"
-                                        )),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                        action="credential-leak:statistics:read",
+                                        resource_type="statistics"
+                                        #resource_id_path_parameter="statistics"
+                                    ))
 ):
     return repo.create_watchlist(tenant_id=ctx.tenant_id, data=payload)
 
@@ -67,6 +66,11 @@ async def list_watchlists(
     cursor: Optional[str] = Query(None),
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     items, next_cursor = repo.list_watchlists(
         tenant_id=ctx.tenant_id, limit=limit, cursor=cursor
@@ -74,8 +78,7 @@ async def list_watchlists(
     return PaginatedWatchlistsResponse(items=items, nextCursor=next_cursor)
 
 
-@router.get(
-    "/watchlists/{watchlist_id}",
+@router.get("/watchlists/{watchlist_id}",
     response_model=WatchlistResponse,
     tags=["Watchlists"],
     summary="Get a watchlist",
@@ -85,12 +88,16 @@ async def get_watchlist(
     watchlist_id: str,
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     return repo.get_watchlist(tenant_id=ctx.tenant_id, watchlist_id=watchlist_id)
 
 
-@router.put(
-    "/watchlists/{watchlist_id}",
+@router.put("/watchlists/{watchlist_id}",
     response_model=WatchlistResponse,
     tags=["Watchlists"],
     summary="Update a watchlist",
@@ -101,14 +108,18 @@ async def update_watchlist(
     payload: WatchlistUpdate,
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     return repo.update_watchlist(
         tenant_id=ctx.tenant_id, watchlist_id=watchlist_id, data=payload
     )
 
 
-@router.delete(
-    "/watchlists/{watchlist_id}",
+@router.delete("/watchlists/{watchlist_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["Watchlists"],
     summary="Delete a watchlist",
@@ -119,6 +130,11 @@ async def delete_watchlist(
     watchlist_id: str,
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     repo.delete_watchlist(tenant_id=ctx.tenant_id, watchlist_id=watchlist_id)
 
@@ -138,6 +154,11 @@ async def create_indicator(
     payload: IndicatorCreate,
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     normalized = IndicatorNormalizer.validate_and_normalize(
         indicator_type=payload.type,
@@ -166,6 +187,11 @@ async def list_indicators(
     cursor: Optional[str] = Query(None),
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     items, next_cursor = repo.list_indicators(
         tenant_id=ctx.tenant_id,
@@ -189,6 +215,11 @@ async def delete_indicator(
     indicator_id: str,
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     repo.delete_indicator(
         tenant_id=ctx.tenant_id, watchlist_id=watchlist_id, indicator_id=indicator_id
@@ -211,5 +242,10 @@ async def get_snapshot(
     indicator_types: Optional[List[IndicatorType]] = Query(None),
     ctx: TenantContext = Depends(get_tenant_context_from_param),
     repo: WatchlistRepository = Depends(get_repository),
+    auth = Depends(require_remote_access(client=platform_auth,
+                                             action="credential-leak:statistics:read",
+                                             resource_type="statistics"
+                                             #resource_id_path_parameter="statistics"
+                                            ))
 ):
     return repo.get_snapshot(tenant_id=ctx.tenant_id, indicator_types=indicator_types)

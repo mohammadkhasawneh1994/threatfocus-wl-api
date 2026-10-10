@@ -33,6 +33,7 @@ app = FastAPI(
             "description": "Read the effective watchlist configuration for a tenant.",
         },
     ],
+    openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
 )
